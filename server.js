@@ -1,40 +1,51 @@
 const express = require("express");
-const app = express();
-const cors = require("cors");
-const axios = require("axios");
+const lodash = require("lodash");
 
-// Middlewares
-app.use(cors());
-app.use(express.json());
+const app = express();
+const port = 5000;
 
 app.get("/api/blog-stats", async (req, res) => {
   try {
-    // Define the curl request options
-    const curlOptions = {
-      method: "GET",
-      url: "https://intent-kit-16.hasura.app/api/rest/blogs",
-      headers: {
-        "x-hasura-admin-secret":
-          "32qR4KmXOIpsGPQKMqEJHGJS27G5s7HdSKO3gdtQd2kv5e852SiYwWNfxkZOBuQ6",
-      },
+    // Make the curl request to fetch blog data
+    const response = await fetch(
+      "https://intent-kit-16.hasura.app/api/rest/blogs",
+      {
+        method: "GET",
+        headers: {
+          "x-hasura-admin-secret":
+            "32qR4KmXOIpsGPQKMqEJHGJS27G5s7HdSKO3gdtQd2kv5e852SiYwWNfxkZOBuQ6",
+        },
+      }
+    );
+
+    // Parse the response as JSON
+    const blogData = await response.json();
+    // Perform analytics using Lodash
+    const totalBlogs = blogData.blogs.length;
+    const blogWithLongestTitle = lodash.maxBy(blogData.blogs, "title.length");
+    const blogsWithPrivacy = lodash.filter(blogData.blogs, (blog) =>
+      blog.title.toLowerCase().includes("privacy")
+    );
+    const uniqueBlogTitles = lodash.uniqBy(blogData.blogs, "title");
+
+    // Prepare the response object
+    const analyticsData = {
+      totalBlogs,
+      blogWithLongestTitle,
+      numberOfBlogsWithPrivacy: blogsWithPrivacy.length,
+      uniqueBlogTitles: uniqueBlogTitles.map((blog) => blog.title),
     };
 
-    // Make the curl request using axios
-    const response = await axios(curlOptions);
-
-    // Handle the response data
-    const blogData = response.data;
-
-    // Respond with the fetched blog data
-    res.json(blogData);
+    // Respond with the analytics data
+    res.json(analyticsData);
   } catch (error) {
     console.error("Error:", error);
     res
       .status(500)
-      .json({ error: "An error occurred while fetching blog data" });
+      .json({ error: "An error occurred while processing blog data" });
   }
 });
 
-app.listen(5000, () => {
-  console.log(`Server listening on port: 5000`);
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
