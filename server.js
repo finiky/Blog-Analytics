@@ -1,10 +1,15 @@
 const express = require("express");
 const lodash = require("lodash");
-
+const cors = require("cors");
 const app = express();
+const memoize = require("memoizee");
 const port = 5000;
 
-app.get("/api/blog-stats", async (req, res) => {
+app.use(cors());
+app.use(express.json());
+
+// Define a function to fetch and return blog data
+const fetchBlogData = async () => {
   try {
     // Make the curl request to fetch blog data
     const response = await fetch(
@@ -18,8 +23,31 @@ app.get("/api/blog-stats", async (req, res) => {
       }
     );
 
+    // Check for a successful response
+    if (!response.ok) {
+      throw new Error("Failed to fetch blog data");
+    }
+
     // Parse the response as JSON
     const blogData = await response.json();
+    return blogData;
+  } catch (error) {
+    console.error("Error:", error);
+    throw error;
+  }
+};
+
+// Create a memoized version of the fetchBlogData function with a cache expiration of 10 minutes (600000 milliseconds)
+const memoizedFetchBlogs = memoize(fetchBlogData, {
+  promise: true,
+  maxAge: 600000,
+});
+
+app.get("/api/blog-stats", async (req, res) => {
+  try {
+    // Make the curl request to fetch blog data
+    const blogData = await memoizedFetchBlogs();
+
     // Perform analytics using Lodash
     const totalBlogs = blogData.blogs.length;
     const blogWithLongestTitle = lodash.maxBy(blogData.blogs, "title.length");
@@ -41,8 +69,38 @@ app.get("/api/blog-stats", async (req, res) => {
   } catch (error) {
     console.error("Error:", error);
     res
-      .status(500)
+      .status(400)
       .json({ error: "An error occurred while processing blog data" });
+  }
+});
+
+app.get("/api/blog-search", async (req, res) => {
+  try {
+    const query = req.query.query;
+
+    // Ensure the query parameter is provided
+    if (!query || query.trim() === "") {
+      return res
+        .status(400)
+        .json({ error: "Query parameter is missing or empty" });
+    }
+
+    // Get all the blogs
+    const blogData = await memoizedFetchBlogs();
+
+    // Perform the search based on the query (case-insensitive)
+    const searchResults = blogData.blogs.filter((blog) => {
+      const title = blog.title.toLowerCase();
+      return title.includes(query.toLowerCase());
+    });
+
+    // Respond with the search results
+    res.json(searchResults);
+  } catch (error) {
+    console.error("Error:", error);
+    res
+      .status(400)
+      .json({ error: "An error occurred while searching for blogs" });
   }
 });
 
